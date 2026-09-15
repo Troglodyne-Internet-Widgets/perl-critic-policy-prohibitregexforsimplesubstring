@@ -4,7 +4,7 @@ Perl::Critic::Policy::ProhibitRegexForSimpleSubstring - Use index() to look for 
 
 # VERSION
 
-version 1.000
+version 1.001
 
 # Perl::Critic::Policy::ProhibitRegexForSimpleSubstring
 
@@ -26,8 +26,8 @@ argument.
 
 This is a fork of
 [Perl::Critic::Policy::Performance::ProhibitRegexForSimpleSubstring](https://metacpan.org/pod/Perl::Critic::Policy::Performance::ProhibitRegexForSimpleSubstring)
-by Dean Hamstead.  What counts as a simple substring is unchanged; what is new
-is the list of calls whose first argument is exempt.
+by Dean Hamstead.  What is new is the list of calls whose first argument is
+exempt, and which modifiers exempt a pattern: see ["MODIFIERS"](#modifiers).
 
 ## PROHIBITED
 
@@ -51,7 +51,7 @@ CORE::split( m/:/, $path );
 And, as in the original, any regex that is not only literal text:
 
 ```perl
-$str =~ m/foo/i;          # a modifier: /i, /m, /s or /x
+$str =~ m/foo/i;          # /i, which index() cannot do
 $str =~ m/^foo/;          # an anchor
 $str =~ m/fo+/;           # a quantifier
 $str =~ m/[ab]c/;         # a character class
@@ -61,6 +61,21 @@ $str =~ m/$foo/;          # interpolation
 $str =~ s/foo/bar/;       # a substitution
 my $rx = qr/foo/;         # a compiled regex
 ```
+
+## MODIFIERS
+
+Only `/i` exempts a pattern, because only `/i` changes what a pattern of
+nothing but literals matches: `index` is case sensitive.
+
+```
+$str =~ m/foo/m;          # reported: /m changes ^ and $, and there are none
+$str =~ m/foo/s;          # reported: /s changes ., and there is none
+$str =~ m/foo bar/x;      # reported: under /x this is the string foobar
+```
+
+A modifier in scope from a `use re` counts the same as one written on the match,
+so a file under `use re '/sx'` is checked like any other, and one under
+`use re '/i'` is exempt throughout.
 
 ## CONFIGURATION
 
@@ -134,7 +149,10 @@ broad.
 What moving from `[Performance::ProhibitRegexForSimpleSubstring]` changes:
 
 - A literal regex as the first argument of `split`, or of anything named in
-`allow`, is not reported.  Nothing else is reported differently.
+`allow`, is not reported.
+- `/m`, `/s` and `/x` no longer exempt a pattern, and neither does a `use re`
+that turns them on.  The original exempted all three, which under
+`use re '/sx'` meant it reported nothing at all.  See ["MODIFIERS"](#modifiers).
 - A `## no critic (Performance::ProhibitRegexForSimpleSubstring)` does not match
 this policy's name, so an annotation that is still needed has to be renamed to
 `## no critic (ProhibitRegexForSimpleSubstring)`.
