@@ -71,9 +71,6 @@ check_table(
     $default, 'not reported, as the original did not',
     'the POD example, index' => [ 0, q{if ( index( $str, 'foo' ) != -1 ) { 1 }} ],
     '/i'                     => [ 0, q{$str =~ m/foo/i;} ],
-    '/m'                     => [ 0, q{$str =~ m/foo/m;} ],
-    '/s'                     => [ 0, q{$str =~ m/foo/s;} ],
-    '/x'                     => [ 0, q{$str =~ m/foo/x;} ],
     'a character class'      => [ 0, q{$str =~ m/[ab]c/;} ],
     'a quantifier'           => [ 0, q{$str =~ m/fo+/;} ],
     'an anchor'              => [ 0, q{$str =~ m/^foo/;} ],
@@ -84,6 +81,33 @@ check_table(
     'a substitution'         => [ 0, q{$str =~ s/foo/bar/;} ],
     'a compiled regex'       => [ 0, q{my $rx = qr/foo/;} ],
     'split on a pattern'     => [ 0, q{split m/\s+/, $s;} ],
+);
+
+# --- What this fork changes: modifiers ------------------------------------------
+
+# Only /i stops index() doing the job.  /m changes ^ and $, /s changes ., and /x
+# makes whitespace and comments insignificant -- none of which a pattern of
+# nothing but literals has -- and a use re in scope counts the same as a flag
+# written on the match.
+check_table(
+    $default, 'a modifier that does not change literal text is still reported',
+    '/m'                              => [ 1, q{$str =~ m/foo/m;} ],
+    '/s'                              => [ 1, q{$str =~ m/foo/s;} ],
+    '/x'                              => [ 1, q{$str =~ m/foo/x;} ],
+    '/msx together'                   => [ 1, q{$str =~ m/foo/msx;} ],
+    '/n'                              => [ 1, q{$str =~ m/foo/n;} ],
+    '/x over a space, still foobar'   => [ 1, q{$str =~ m/foo bar/x;} ],
+    '/x over a comment, still foobar' => [ 1, qq{\$str =~ m/foo # the first half\nbar/x;} ],
+    "use re '/aasx'"                  => [ 1, q{use re '/aasx'; $str =~ m/foo/;} ],
+    "use re '/aasx', then no re"      => [ 1, q{use re '/aasx'; { no re '/sx'; $str =~ m/foo/ }} ],
+);
+
+check_table(
+    $default, 'what does change the answer is still not reported',
+    "use re '/i'"                  => [ 0, q{use re '/i'; $str =~ m/foo/;} ],
+    "use re '/aasxi'"              => [ 0, q{use re '/aasxi'; $str =~ m/foo/;} ],
+    'a space spelled as a class'   => [ 0, q{use re '/aasx'; $str =~ m/foo[ ]bar/;} ],
+    "split's pattern under use re" => [ 0, q{use re '/aasx'; split m/,/, $s;} ],
 );
 
 # --- What this fork adds: split's pattern --------------------------------------

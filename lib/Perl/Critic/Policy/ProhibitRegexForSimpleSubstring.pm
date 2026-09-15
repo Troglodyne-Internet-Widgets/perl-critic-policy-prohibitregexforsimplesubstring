@@ -9,7 +9,6 @@ use 5.014;
 
 use re '/aa';
 
-use List::Util qw{any};
 use Readonly;
 
 use Perl::Critic::Utils qw{ :severities :classification };
@@ -33,8 +32,8 @@ argument.
 
 This is a fork of
 L<Perl::Critic::Policy::Performance::ProhibitRegexForSimpleSubstring|https://metacpan.org/pod/Perl::Critic::Policy::Performance::ProhibitRegexForSimpleSubstring>
-by Dean Hamstead.  What counts as a simple substring is unchanged; what is new
-is the list of calls whose first argument is exempt.
+by Dean Hamstead.  What is new is the list of calls whose first argument is
+exempt, and which modifiers exempt a pattern: see L</MODIFIERS>.
 
 =head2 PROHIBITED
 
@@ -53,7 +52,7 @@ is the list of calls whose first argument is exempt.
 
 And, as in the original, any regex that is not only literal text:
 
-    $str =~ m/foo/i;          # a modifier: /i, /m, /s or /x
+    $str =~ m/foo/i;          # /i, which index() cannot do
     $str =~ m/^foo/;          # an anchor
     $str =~ m/fo+/;           # a quantifier
     $str =~ m/[ab]c/;         # a character class
@@ -62,6 +61,19 @@ And, as in the original, any regex that is not only literal text:
     $str =~ m/$foo/;          # interpolation
     $str =~ s/foo/bar/;       # a substitution
     my $rx = qr/foo/;         # a compiled regex
+
+=head2 MODIFIERS
+
+Only C</i> exempts a pattern, because only C</i> changes what a pattern of
+nothing but literals matches: C<index> is case sensitive.
+
+    $str =~ m/foo/m;          # reported: /m changes ^ and $, and there are none
+    $str =~ m/foo/s;          # reported: /s changes ., and there is none
+    $str =~ m/foo bar/x;      # reported: under /x this is the string foobar
+
+A modifier in scope from a C<use re> counts the same as one written on the match,
+so a file under C<use re '/sx'> is checked like any other, and one under
+C<use re '/i'> is exempt throughout.
 
 =head2 CONFIGURATION
 
@@ -147,7 +159,13 @@ What moving from C<[Performance::ProhibitRegexForSimpleSubstring]> changes:
 =item *
 
 A literal regex as the first argument of C<split>, or of anything named in
-C<allow>, is not reported.  Nothing else is reported differently.
+C<allow>, is not reported.
+
+=item *
+
+C</m>, C</s> and C</x> no longer exempt a pattern, and neither does a C<use re>
+that turns them on.  The original exempted all three, which under
+C<use re '/sx'> meant it reported nothing at all.  See L</MODIFIERS>.
 
 =item *
 
@@ -169,9 +187,9 @@ Readonly::Scalar my $EXPL => q{Use index() instead of a regex when looking for l
 
 Readonly::Array my @DEFAULT_ALLOW => qw{ split };
 
-# /i because index() is case sensitive; /m, /s and /x because each changes what
-# the text of the pattern means.  As in the original.
-Readonly::Array my @EXEMPTING_MODIFIERS => qw{ i m s x };
+# The one modifier that changes what a pattern of literals matches: index() is
+# case sensitive.  See MODIFIERS in the POD for why /m, /s and /x are not here.
+Readonly::Scalar my $EXEMPTING_MODIFIER => 'i';
 
 # Operators that sit between arguments rather than inside one.  The
 # low-precedence ones end a list operator's arguments: split m/,/, $s or die.
@@ -252,14 +270,14 @@ sub violates {
     return $self->violation( $DESC, $EXPL, $elem );
 }
 
-# The original policy's test: no modifier that index() cannot honour, and every
+# No /i, whether written on the match or in scope from a use re, and every
 # significant token of the pattern a literal.
 sub _is_literal_text {
     my ( $elem, $doc ) = @_;
 
     my $re = $doc->ppix_regexp_from_element($elem) or return 0;
     return 0 if $re->failures();
-    return 0 if any { $re->modifier_asserted($_) } @EXEMPTING_MODIFIERS;
+    return 0 if $re->modifier_asserted($EXEMPTING_MODIFIER);
 
     my $pattern = $re->regular_expression() or return 0;
 
