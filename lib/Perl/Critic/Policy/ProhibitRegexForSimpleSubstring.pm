@@ -3,7 +3,9 @@ package Perl::Critic::Policy::ProhibitRegexForSimpleSubstring;
 # ABSTRACT: Use index() to look for literal text, and leave split its pattern.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
+
+no autovivification;
 
 use 5.014;
 
@@ -282,7 +284,11 @@ sub _is_literal_text {
     my $pattern = $re->regular_expression() or return 0;
 
     my $has_literal = 0;
-    foreach my $token ( map { $_->tokens() } $pattern->children() ) {
+    my @tokens;
+    foreach my $child ( $pattern->children() ) {
+        push @tokens, $child->tokens();
+    }
+    foreach my $token (@tokens) {
         next     if !$token->significant();
         return 0 if !$token->isa('PPIx::Regexp::Token::Literal');
         $has_literal = 1;
@@ -296,26 +302,31 @@ sub _is_literal_text {
 sub _call_taking_it_first {
     my ($node) = @_;
 
-    return if !_is_whole_argument($node);
+    # Each pass either answers, or climbs out of a pair of parentheses of its own:
+    # `split( ( m/,/ ), $s )`, first in the call's.
+    while (1) {
+        return if !_is_whole_argument($node);
 
-    # `split m/,/, $s`: the call is the word straight before it, and anything
-    # else straight before it means this is not the first argument.
-    my $before = $node->sprevious_sibling();
-    if ($before) {
-        return $before if $before->isa('PPI::Token::Word') && is_function_call($before);
-        return;
+        # `split m/,/, $s`: the call is the word straight before it, and anything
+        # else straight before it means this is not the first argument.
+        my $before = $node->sprevious_sibling();
+        if ($before) {
+            return $before if $before->isa('PPI::Token::Word') && is_function_call($before);
+            return;
+        }
+
+        # `split( m/,/, $s )`: first in a list, which belongs to the word before it.
+        my $expression = $node->parent();
+        my $list       = $expression && $expression->parent();
+        return if !$list || !$list->isa('PPI::Structure::List');
+
+        my $caller = $list->sprevious_sibling();
+        return $caller if $caller && $caller->isa('PPI::Token::Word');
+
+        $node = $list;
     }
 
-    # `split( m/,/, $s )`: first in a list, which belongs to the word before it.
-    my $expression = $node->parent();
-    my $list       = $expression && $expression->parent();
-    return if !$list || !$list->isa('PPI::Structure::List');
-
-    my $caller = $list->sprevious_sibling();
-    return $caller if $caller && $caller->isa('PPI::Token::Word');
-
-    # `split( ( m/,/ ), $s )`: parentheses of its own, first in the call's.
-    return _call_taking_it_first($list);
+    return;
 }
 
 sub _is_whole_argument {
@@ -343,7 +354,7 @@ sub _allowed {
         return $self->{_allow}{$name};
     }
 
-    my $short = $name =~ s/\A.*:://r;
+    my $short = $name =~ s/\A.*:://sxr;
     return $self->{_allow}{$name} || $self->{_allow}{$short};
 }
 

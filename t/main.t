@@ -1,5 +1,7 @@
+package main;
+
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use re '/aa';
 
@@ -7,7 +9,7 @@ use 5.014;
 
 =head1 NAME
 
-t/main.t - which literal regexes the policy reports, and which it leaves to the
+main - which literal regexes the policy reports, and which it leaves to the
 call they are the pattern of
 
 =head1 DESCRIPTION
@@ -20,10 +22,10 @@ changed; the rest are what it adds.
 =cut
 
 use Test::More;
-use Test::Warnings qw{warnings};
+use Test::Warnings ();
 
 use Perl::Critic;
-use Perl::Critic::Policy::ProhibitRegexForSimpleSubstring;
+use Perl::Critic::Policy::ProhibitRegexForSimpleSubstring ();
 
 # -profile => q{} because Perl::Critic otherwise walks up from cwd looking for
 # a .perlcriticrc, finds this dist's own, and runs every policy in it against
@@ -49,6 +51,8 @@ sub check_table {
     }
     return;
 }
+
+ok( Perl::Critic::Policy::ProhibitRegexForSimpleSubstring->can('violates'), 'the policy module loads' );
 
 my $default = critic_with(q{});
 
@@ -169,8 +173,10 @@ is( violations( $default, q{$str =~ m/foo/;  ## no critic (ProhibitRegexForSimpl
 
 # Places a match can sit with nothing around it to climb into.
 foreach my $source ( q{m/foo/;}, q{sub { m/foo/ }}, q{split m/x/} ) {
-    my @warned = warnings { violations( $default, $source ) };
+    my @warned = Test::Warnings::warnings( sub { violations( $default, $source ) } );
     is_deeply( \@warned, [], "no warning from critiquing it: $source" );
 }
 
 done_testing();
+
+1;
